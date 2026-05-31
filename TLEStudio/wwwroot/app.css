@@ -9,3 +9,66 @@ html, body {
 a {
     color: #ff4f7b;
 }
+
+/* Modern baseline for non-Bootstrap buttons used throughout admin and forms. */
+button:not(.btn),
+input[type="button"]:not(.btn),
+input[type="submit"]:not(.btn),
+input[type="reset"]:not(.btn) {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid #d3dbe7;
+    background: linear-gradient(180deg, #ffffff, #f6f9ff);
+    color: #1f2430;
+    border-radius: 10px;
+    padding: 0.46rem 0.9rem;
+    font-weight: 600;
+    line-height: 1.2;
+    box-shadow: 0 1px 2px rgba(22, 32, 54, 0.08);
+    transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+
+button:not(.btn):hover,
+input[type="button"]:not(.btn):hover,
+input[type="submit"]:not(.btn):hover,
+input[type="reset"]:not(.btn):hover {
+    border-color: #bcc9db;
+    box-shadow: 0 6px 14px rgba(22, 32, 54, 0.12);
+    transform: translateY(-1px);
+}
+
+button:not(.btn):active,
+input[type="button"]:not(.btn):active,
+input[type="submit"]:not(.btn):active,
+input[type="reset"]:not(.btn):active {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(22, 32, 54, 0.12);
+}
+
+button:not(.btn):focus-visible,
+input[type="button"]:not(.btn):focus-visible,
+input[type="submit"]:not(.btn):focus-visible,
+input[type="reset"]:not(.btn):focus-visible {
+    outline: none;
+    border-color: #ff4f7b;
+    box-shadow: 0 0 0 0.2rem rgba(255, 79, 123, 0.18);
+}
+
+button:not(.btn):disabled,
+input[type="button"]:not(.btn):disabled,
+input[type="submit"]:not(.btn):disabled,
+input[type="reset"]:not(.btn):disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+button.danger:not(.btn),
+input.danger[type="button"]:not(.btn),
+input.danger[type="submit"]:not(.btn),
+input.danger[type="reset"]:not(.btn) {
+    border-color: #f3c3cb;
+    background: linear-gradient(180deg, #fff6f8, #ffeef1);
+    color: #8f2038;
+}

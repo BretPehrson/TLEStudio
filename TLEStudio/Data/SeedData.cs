@@ -186,6 +186,22 @@ public static class SeedData
             await context.SaveChangesAsync();
             logger.LogInformation("Availability seeded from weekly rules successfully");
         }
+
+        var hasOfferSetting = await context.NewGuestOfferSettings.AnyAsync();
+        if (!hasOfferSetting)
+        {
+            logger.LogInformation("No new guest offer settings found, seeding defaults");
+            context.NewGuestOfferSettings.Add(new NewGuestOfferSetting
+            {
+                OfferCode = "new_guest_offer",
+                Title = "New Guest Offer",
+                Description = "Complimentary gloss upgrade with your first cut + color service.",
+                CtaText = "Create account to claim",
+                IsActive = true,
+                UpdatedUtc = DateTime.UtcNow
+            });
+            await context.SaveChangesAsync();
+        }
     }
 
     private static async Task EnsureSchemaAsync(AppDbContext context, ILogger logger)
@@ -288,6 +304,24 @@ public static class SeedData
                 BEGIN
                     ALTER TABLE dbo.LoginUsers
                     ADD CreatedUtc datetime2 NOT NULL CONSTRAINT DF_LoginUsers_CreatedUtc DEFAULT(SYSUTCDATETIME());
+                END;
+                """);
+
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                IF COL_LENGTH('dbo.LoginUsers', 'HasNewGuestOffer') IS NULL
+                BEGIN
+                    ALTER TABLE dbo.LoginUsers
+                    ADD HasNewGuestOffer bit NOT NULL CONSTRAINT DF_LoginUsers_HasNewGuestOffer DEFAULT(0);
+                END;
+                """);
+
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                IF COL_LENGTH('dbo.LoginUsers', 'NewGuestOfferClaimedUtc') IS NULL
+                BEGIN
+                    ALTER TABLE dbo.LoginUsers
+                    ADD NewGuestOfferClaimedUtc datetime2 NULL;
                 END;
                 """);
 
@@ -431,6 +465,92 @@ public static class SeedData
                     );
 
                     CREATE UNIQUE INDEX IX_DayAvailabilityOverrides_OverrideDate ON dbo.DayAvailabilityOverrides (OverrideDate);
+                END;
+                """);
+
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                IF OBJECT_ID('dbo.NewGuestOfferSettings', 'U') IS NULL
+                BEGIN
+                    CREATE TABLE dbo.NewGuestOfferSettings (
+                        Id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        OfferCode nvarchar(80) NOT NULL,
+                        Title nvarchar(120) NOT NULL,
+                        Description nvarchar(300) NOT NULL,
+                        CtaText nvarchar(80) NOT NULL,
+                        IsActive bit NOT NULL CONSTRAINT DF_NewGuestOfferSettings_IsActive DEFAULT(1),
+                        UpdatedUtc datetime2 NOT NULL CONSTRAINT DF_NewGuestOfferSettings_UpdatedUtc DEFAULT(SYSUTCDATETIME())
+                    );
+
+                    CREATE UNIQUE INDEX IX_NewGuestOfferSettings_OfferCode ON dbo.NewGuestOfferSettings (OfferCode);
+                END;
+                """);
+
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                IF COL_LENGTH('dbo.NewGuestOfferSettings', 'OfferCode') IS NULL
+                BEGIN
+                    ALTER TABLE dbo.NewGuestOfferSettings
+                    ADD OfferCode nvarchar(80) NOT NULL CONSTRAINT DF_NewGuestOfferSettings_OfferCode DEFAULT('new_guest_offer');
+                END;
+                """);
+
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                IF COL_LENGTH('dbo.NewGuestOfferSettings', 'Title') IS NULL
+                BEGIN
+                    ALTER TABLE dbo.NewGuestOfferSettings
+                    ADD Title nvarchar(120) NOT NULL CONSTRAINT DF_NewGuestOfferSettings_Title DEFAULT('New Guest Offer');
+                END;
+                """);
+
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                IF COL_LENGTH('dbo.NewGuestOfferSettings', 'Description') IS NULL
+                BEGIN
+                    ALTER TABLE dbo.NewGuestOfferSettings
+                    ADD Description nvarchar(300) NOT NULL CONSTRAINT DF_NewGuestOfferSettings_Description DEFAULT('Complimentary gloss upgrade with your first cut + color service.');
+                END;
+                """);
+
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                IF COL_LENGTH('dbo.NewGuestOfferSettings', 'CtaText') IS NULL
+                BEGIN
+                    ALTER TABLE dbo.NewGuestOfferSettings
+                    ADD CtaText nvarchar(80) NOT NULL CONSTRAINT DF_NewGuestOfferSettings_CtaText DEFAULT('Create account to claim');
+                END;
+                """);
+
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                IF COL_LENGTH('dbo.NewGuestOfferSettings', 'IsActive') IS NULL
+                BEGIN
+                    ALTER TABLE dbo.NewGuestOfferSettings
+                    ADD IsActive bit NOT NULL CONSTRAINT DF_NewGuestOfferSettings_IsActive_Existing DEFAULT(1);
+                END;
+                """);
+
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                IF COL_LENGTH('dbo.NewGuestOfferSettings', 'UpdatedUtc') IS NULL
+                BEGIN
+                    ALTER TABLE dbo.NewGuestOfferSettings
+                    ADD UpdatedUtc datetime2 NOT NULL CONSTRAINT DF_NewGuestOfferSettings_UpdatedUtc_Existing DEFAULT(SYSUTCDATETIME());
+                END;
+                """);
+
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM sys.indexes
+                    WHERE name = 'IX_NewGuestOfferSettings_OfferCode'
+                      AND object_id = OBJECT_ID('dbo.NewGuestOfferSettings')
+                )
+                BEGIN
+                    CREATE UNIQUE INDEX IX_NewGuestOfferSettings_OfferCode
+                    ON dbo.NewGuestOfferSettings(OfferCode);
                 END;
                 """);
         }

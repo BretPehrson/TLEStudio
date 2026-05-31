@@ -11,6 +11,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ServiceOffering> ServiceOfferings => Set<ServiceOffering>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<DayAvailabilityOverride> DayAvailabilityOverrides => Set<DayAvailabilityOverride>();
+    public DbSet<NewGuestOfferSetting> NewGuestOfferSettings => Set<NewGuestOfferSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -59,6 +60,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
         modelBuilder.Entity<DayAvailabilityOverride>()
             .HasIndex(x => x.OverrideDate)
+            .IsUnique();
+
+        modelBuilder.Entity<NewGuestOfferSetting>()
+            .HasIndex(x => x.OfferCode)
             .IsUnique();
     }
 }

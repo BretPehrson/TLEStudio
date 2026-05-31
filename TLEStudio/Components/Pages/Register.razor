@@ -1,6 +1,9 @@
 @page "/register"
+@using Microsoft.EntityFrameworkCore
+@using TLEStudio.Data
 @inject NavigationManager NavigationManager
 @inject IConfiguration Configuration
+@inject IDbContextFactory<AppDbContext> DbContextFactory
 
 <PageTitle>Create Account</PageTitle>
 
@@ -24,6 +27,13 @@
                     @if (_registrationEnabled)
                     {
                         <form method="post" action="/auth/register">
+                            @if (_hasNewGuestOffer)
+                            {
+                                <div class="alert alert-success" role="alert">
+                                    @_offerTitle is active for this signup. @_offerDescription
+                                </div>
+                            }
+
                             <div class="form-group mb-3">
                                 <label for="email" class="form-label">Email</label>
                                 <input id="email" name="email" type="email" class="form-control" minlength="6" maxlength="256" required />
@@ -53,6 +63,7 @@
                             }
 
                             <input type="hidden" name="returnUrl" value="@_returnUrl" />
+                            <input type="hidden" name="offer" value="@_offerCode" />
 
                             <div class="d-grid">
                                 <button type="submit" class="btn auth-btn">Create account</button>
@@ -82,12 +93,16 @@
 
 @code {
     private string _returnUrl = "/calendar";
+    private string _offerCode = string.Empty;
+    private string _offerTitle = "New Guest Offer";
+    private string _offerDescription = "Complete registration to claim this offer.";
+    private bool _hasNewGuestOffer;
     private string? _message;
     private bool _isError;
     private bool _registrationEnabled;
     private string? _turnstileSiteKey;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         _turnstileSiteKey = Configuration["Turnstile:SiteKey"];
         var turnstileSecretKey = Configuration["Turnstile:SecretKey"];
@@ -101,10 +116,36 @@
 
         var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        query.TryGetValue("offer", out var offerCodeFromUrl);
+        var requestedOfferCode = offerCodeFromUrl.ToString();
 
         if (query.TryGetValue("returnUrl", out var returnUrl) && !string.IsNullOrWhiteSpace(returnUrl))
         {
             _returnUrl = returnUrl.ToString();
+        }
+
+        await using (var dbContext = await DbContextFactory.CreateDbContextAsync())
+        {
+            var activeOffer = await dbContext.NewGuestOfferSettings
+                .AsNoTracking()
+                .Where(x => x.IsActive)
+                .OrderByDescending(x => x.UpdatedUtc)
+                .ThenByDescending(x => x.Id)
+                .FirstOrDefaultAsync();
+
+            if (activeOffer is not null)
+            {
+                _offerTitle = activeOffer.Title;
+                _offerDescription = activeOffer.Description;
+
+                if (activeOffer.IsActive &&
+                    !string.IsNullOrWhiteSpace(requestedOfferCode) &&
+                    string.Equals(requestedOfferCode, activeOffer.OfferCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    _offerCode = activeOffer.OfferCode;
+                    _hasNewGuestOffer = true;
+                }
+            }
         }
 
         if (!query.TryGetValue("error", out var errorCode))

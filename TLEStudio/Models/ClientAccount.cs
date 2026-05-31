@@ -34,6 +34,10 @@ public sealed class LoginUser
 
     public bool IsAdmin { get; set; }
 
+    public bool HasNewGuestOffer { get; set; }
+
+    public DateTime? NewGuestOfferClaimedUtc { get; set; }
+
     public int FailedLoginCount { get; set; }
 
     public DateTime? LockoutEndUtc { get; set; }
@@ -109,4 +113,29 @@ public sealed class DayAvailabilityOverride
     public int Id { get; set; }
 
     public DateOnly OverrideDate { get; set; }
+}
+
+public sealed class NewGuestOfferSetting
+{
+    public int Id { get; set; }
+
+    [Required]
+    [MaxLength(80)]
+    public string OfferCode { get; set; } = "new_guest_offer";
+
+    [Required]
+    [MaxLength(120)]
+    public string Title { get; set; } = "New Guest Offer";
+
+    [Required]
+    [MaxLength(300)]
+    public string Description { get; set; } = "Complimentary gloss upgrade with your first cut + color service.";
+
+    [Required]
+    [MaxLength(80)]
+    public string CtaText { get; set; } = "Create account to claim";
+
+    public bool IsActive { get; set; } = true;
+
+    public DateTime? UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

@@ -125,40 +125,56 @@ public sealed class AuthController(
         [FromForm] string password,
         [FromForm] string confirmPassword,
         [FromForm] string returnUrl = "/calendar",
+        [FromForm] string offer = "",
         [FromForm(Name = "website")] string honeypot = "",
         [FromForm(Name = "cf-turnstile-response")] string turnstileToken = "")
     {
         var safeReturnUrl = SanitizeReturnUrl(returnUrl);
+        var requestedOfferCode = offer.Trim();
+        var activeOffer = await dbContext.NewGuestOfferSettings
+            .AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderByDescending(x => x.UpdatedUtc)
+            .ThenByDescending(x => x.Id)
+            .FirstOrDefaultAsync();
+
+        var hasNewGuestOffer = activeOffer is not null &&
+            activeOffer.IsActive &&
+            !string.IsNullOrWhiteSpace(activeOffer.OfferCode) &&
+            string.Equals(requestedOfferCode, activeOffer.OfferCode, StringComparison.OrdinalIgnoreCase);
+
+        var registerQuerySuffix = BuildRegisterQuerySuffix(safeReturnUrl, requestedOfferCode);
+
         if (!IsRegistrationEnabled())
         {
-            return Redirect($"/register?error=disabled&returnUrl={Uri.EscapeDataString(safeReturnUrl)}");
+            return Redirect($"/register?error=disabled{registerQuerySuffix}");
         }
 
         if (!string.IsNullOrWhiteSpace(honeypot))
         {
             logger.LogWarning("Blocked bot-like registration payload.");
-            return Redirect($"/register?success=1&returnUrl={Uri.EscapeDataString(safeReturnUrl)}");
+            return Redirect($"/register?success=1{registerQuerySuffix}");
         }
 
         var normalizedEmail = email.Trim().ToLowerInvariant();
         if (!IsValidEmail(normalizedEmail))
         {
-            return Redirect($"/register?error=invalid_email&returnUrl={Uri.EscapeDataString(safeReturnUrl)}");
+            return Redirect($"/register?error=invalid_email{registerQuerySuffix}");
         }
 
         if (!IsStrongPassword(password))
         {
-            return Redirect($"/register?error=weak_password&returnUrl={Uri.EscapeDataString(safeReturnUrl)}");
+            return Redirect($"/register?error=weak_password{registerQuerySuffix}");
         }
 
         if (!string.Equals(password, confirmPassword, StringComparison.Ordinal))
         {
-            return Redirect($"/register?error=password_mismatch&returnUrl={Uri.EscapeDataString(safeReturnUrl)}");
+            return Redirect($"/register?error=password_mismatch{registerQuerySuffix}");
         }
 
         if (!await IsTurnstileValidAsync(turnstileToken))
         {
-            return Redirect($"/register?error=captcha&returnUrl={Uri.EscapeDataString(safeReturnUrl)}");
+            return Redirect($"/register?error=captcha{registerQuerySuffix}");
         }
 
         var exists = await dbContext.LoginUsers.AnyAsync(x =>
@@ -166,7 +182,7 @@ public sealed class AuthController(
             (x.Email != null && x.Email.ToLower() == normalizedEmail));
         if (exists)
         {
-            return Redirect($"/register?error=exists&returnUrl={Uri.EscapeDataString(safeReturnUrl)}");
+            return Redirect($"/register?error=exists{registerQuerySuffix}");
         }
 
         var verificationToken = VerificationTokenUtility.GenerateToken();
@@ -183,6 +199,8 @@ public sealed class AuthController(
             EmailVerificationTokenExpiresUtc = verificationExpiry,
             AccountState = LoginAccountStates.PendingApproval,
             IsAdmin = false,
+            HasNewGuestOffer = hasNewGuestOffer,
+            NewGuestOfferClaimedUtc = hasNewGuestOffer ? DateTime.UtcNow : null,
             FailedLoginCount = 0,
             LockoutEndUtc = null,
             CreatedUtc = DateTime.UtcNow
@@ -198,11 +216,22 @@ public sealed class AuthController(
             dbContext.LoginUsers.Remove(account);
             await dbContext.SaveChangesAsync();
             logger.LogError("Registration aborted because verification email could not be sent for {Email}.", normalizedEmail);
-            return Redirect($"/register?error=email_send_failed&returnUrl={Uri.EscapeDataString(safeReturnUrl)}");
+            return Redirect($"/register?error=email_send_failed{registerQuerySuffix}");
         }
 
         logger.LogInformation("New account registered: {Email}. Verification email sent.", normalizedEmail);
         return Redirect($"/login?verify_pending=1&returnUrl={Uri.EscapeDataString(safeReturnUrl)}");
+    }
+
+    private static string BuildRegisterQuerySuffix(string safeReturnUrl, string offerCode)
+    {
+        var suffix = $"&returnUrl={Uri.EscapeDataString(safeReturnUrl)}";
+        if (!string.IsNullOrWhiteSpace(offerCode))
+        {
+            suffix += $"&offer={Uri.EscapeDataString(offerCode)}";
+        }
+
+        return suffix;
     }
 
     [HttpGet("verify-email")]

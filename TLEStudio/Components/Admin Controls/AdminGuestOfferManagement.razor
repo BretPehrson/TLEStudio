@@ -1,0 +1,618 @@
+@namespace TLEStudio.Components
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.EntityFrameworkCore
+@using TLEStudio.Data
+@using TLEStudio.Models
+@inject IDbContextFactory<AppDbContext> DbContextFactory
+@inject ILogger<AdminGuestOfferManagement> Logger
+
+<section class="card-block offer-card">
+    <div class="card-head">
+        <strong>Offers</strong>
+        <button type="button" class="toggle-btn" @onclick="ToggleOfferCard">
+            @(_showOfferCard ? "Collapse" : "Open")
+        </button>
+    </div>
+
+    @if (_showOfferCard)
+    {
+        <div class="card-body">
+            <div class="offer-actions">
+                <button type="button" class="save-btn" @onclick="OpenAddModal">Add</button>
+            </div>
+
+            @if (_offers.Count == 0)
+            {
+                <p class="status-msg">No offers found yet. Use Add to create the first offer.</p>
+            }
+            else
+            {
+                <div class="offer-grid">
+                    @foreach (var row in _offers)
+                    {
+                        <article class="offer-tile @(row.IsActive ? "is-active" : "is-inactive")">
+                            <div class="offer-tile-head">
+                                <h4>@row.Title</h4>
+                                <span class="status-pill @(row.IsActive ? "active" : "inactive")">
+                                    @(row.IsActive ? "Active" : "Inactive")
+                                </span>
+                            </div>
+
+                            <p class="offer-code">@row.OfferCode</p>
+                            <p class="offer-copy">@row.Description</p>
+                            <p class="offer-meta">Link text: @row.CtaText</p>
+                            <p class="offer-meta">Updated: @FormatUpdatedUtc(row.UpdatedUtc)</p>
+
+                            <div class="offer-actions tile-actions">
+                                <button type="button" class="cancel-btn" @onclick="() => OpenEditModal(row.Id)">Edit</button>
+                                <button
+                                    type="button"
+                                    class="danger"
+                                    disabled="@(!row.IsActive)"
+                                    @onclick="() => InactivateOfferAsync(row.Id)">
+                                    Inactivate
+                                </button>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_statusMessage))
+            {
+                <p class="status-msg">@_statusMessage</p>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_statusDetails))
+            {
+                <p class="status-msg error">@_statusDetails</p>
+            }
+        </div>
+    }
+</section>
+
+@if (_isOfferModalOpen)
+{
+    <div class="modal-overlay" role="presentation" @onclick="CloseOfferModal">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-label="Offer details" @onclick:stopPropagation="true">
+            <h3>@(_isAddMode ? "Add Offer" : "Edit Offer")</h3>
+
+            <EditForm Model="_offerEditor" OnValidSubmit="SaveModalOfferAsync" OnInvalidSubmit="HandleInvalidOfferSubmit" FormName="offerModalForm">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="offer-form-grid">
+                    <div>
+                        <label for="offerTitle">Offer Title</label>
+                        <InputText id="offerTitle" class="field" @bind-Value="_offerEditor.Title" />
+                    </div>
+                    <div>
+                        <label for="offerCode">Offer Code</label>
+                        <InputText id="offerCode" class="field" @bind-Value="_offerEditor.OfferCode" />
+                    </div>
+                    <div class="offer-wide">
+                        <label for="offerDescription">Offer Description</label>
+                        <InputTextArea id="offerDescription" class="field area" @bind-Value="_offerEditor.Description" />
+                    </div>
+                    <div>
+                        <label for="offerCtaText">Link Text</label>
+                        <InputText id="offerCtaText" class="field" @bind-Value="_offerEditor.CtaText" />
+                    </div>
+                    <div class="offer-active">
+                        <label>
+                            <InputCheckbox @bind-Value="_offerEditor.IsActive" />
+                            <span>Active</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="offer-actions">
+                    <button type="submit" class="save-btn">Save</button>
+                    <button type="button" class="cancel-btn" @onclick="CloseOfferModal">Cancel</button>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_modalStatusMessage))
+                {
+                    <p class="status-msg modal-status">@_modalStatusMessage</p>
+                }
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly OfferEditorModel _offerEditor = new();
+    private readonly List<NewGuestOfferSetting> _offers = [];
+    private bool _showOfferCard = true;
+    private bool _isOfferModalOpen;
+    private bool _isAddMode = true;
+    private int _editingOfferId;
+    private string? _statusMessage;
+    private string? _statusDetails;
+    private string? _modalStatusMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadOfferAsync();
+    }
+
+    private void ToggleOfferCard()
+    {
+        _showOfferCard = !_showOfferCard;
+    }
+
+    private async Task LoadOfferAsync()
+    {
+        try
+        {
+            _statusMessage = null;
+            _statusDetails = null;
+            _offers.Clear();
+
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+
+            var rows = await db.NewGuestOfferSettings
+                .AsNoTracking()
+                .OrderByDescending(x => x.IsActive)
+                .ThenByDescending(x => x.UpdatedUtc)
+                .ThenByDescending(x => x.Id)
+                .ToListAsync();
+
+            _offers.AddRange(rows);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed loading new guest offer settings for admin card.");
+            ResetEditorToDefaults();
+            _statusMessage = "Could not load offer settings right now. Restart the app and try again.";
+            _statusDetails = ex.Message;
+        }
+    }
+
+    private async Task SaveModalOfferAsync()
+    {
+        _modalStatusMessage = null;
+
+        var normalizedCode = NormalizeOfferCode(_offerEditor.OfferCode);
+        if (string.IsNullOrWhiteSpace(normalizedCode))
+        {
+            _modalStatusMessage = "Offer code can only contain letters, numbers, underscores, and hyphens.";
+            return;
+        }
+
+        _offerEditor.OfferCode = normalizedCode;
+
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            var now = DateTime.UtcNow;
+            var message = "Offer updated.";
+
+            if (_isAddMode)
+            {
+                var row = new NewGuestOfferSetting
+                {
+                    OfferCode = _offerEditor.OfferCode.Trim(),
+                    Title = _offerEditor.Title.Trim(),
+                    Description = _offerEditor.Description.Trim(),
+                    CtaText = _offerEditor.CtaText.Trim(),
+                    IsActive = _offerEditor.IsActive,
+                    UpdatedUtc = now
+                };
+
+                var hasAnyActiveOffer = await db.NewGuestOfferSettings.AnyAsync(x => x.IsActive);
+                if (!row.IsActive && !hasAnyActiveOffer)
+                {
+                    row.IsActive = true;
+                    message = "Offer saved and auto-activated because no active offer existed.";
+                }
+
+                db.NewGuestOfferSettings.Add(row);
+
+                if (row.IsActive)
+                {
+                    await DeactivateOtherOffersAsync(db, row.Id, now);
+                }
+
+                await db.SaveChangesAsync();
+                _statusMessage = message == "Offer updated." ? "Offer saved." : message;
+                await LoadOfferAsync();
+                CloseOfferModal();
+                return;
+            }
+
+            var existing = await db.NewGuestOfferSettings.FirstOrDefaultAsync(x => x.Id == _editingOfferId);
+            if (existing is null)
+            {
+                _editingOfferId = 0;
+                _statusMessage = "Offer not found. Reload and try again.";
+                return;
+            }
+
+            existing.OfferCode = _offerEditor.OfferCode.Trim();
+            existing.Title = _offerEditor.Title.Trim();
+            existing.Description = _offerEditor.Description.Trim();
+            existing.CtaText = _offerEditor.CtaText.Trim();
+            existing.IsActive = _offerEditor.IsActive;
+            existing.UpdatedUtc = now;
+
+            if (existing.IsActive)
+            {
+                await DeactivateOtherOffersAsync(db, existing.Id, now);
+            }
+            else
+            {
+                var hasOtherActiveOffer = await db.NewGuestOfferSettings
+                    .AnyAsync(x => x.Id != existing.Id && x.IsActive);
+
+                if (!hasOtherActiveOffer)
+                {
+                    existing.IsActive = true;
+                    message = "At least one offer must remain active, so this offer stayed active.";
+                }
+            }
+
+            await db.SaveChangesAsync();
+            _statusMessage = message;
+            await LoadOfferAsync();
+            CloseOfferModal();
+        }
+        catch (DbUpdateException ex)
+        {
+            Logger.LogError(ex, "Failed saving new guest offer settings due to database update error.");
+            _modalStatusMessage = "Could not save offer settings. Confirm the offer code is unique and try again.";
+            _statusMessage = _modalStatusMessage;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unexpected error saving new guest offer settings.");
+            _modalStatusMessage = "Unexpected error saving offer settings. Restart the app and try again.";
+            _statusMessage = _modalStatusMessage;
+        }
+    }
+
+    private void HandleInvalidOfferSubmit(EditContext _)
+    {
+        _modalStatusMessage = "Please fix validation errors and try again.";
+    }
+
+    private void OpenAddModal()
+    {
+        ResetEditorToDefaults();
+        _isAddMode = true;
+        _editingOfferId = 0;
+        _modalStatusMessage = null;
+        _isOfferModalOpen = true;
+    }
+
+    private void OpenEditModal(int offerId)
+    {
+        var row = _offers.FirstOrDefault(x => x.Id == offerId);
+        if (row is null)
+        {
+            _statusMessage = "Offer not found. Refresh and try again.";
+            return;
+        }
+
+        ApplyEditorFromRow(row);
+        _isAddMode = false;
+        _editingOfferId = row.Id;
+        _modalStatusMessage = null;
+        _isOfferModalOpen = true;
+    }
+
+    private async Task InactivateOfferAsync(int offerId)
+    {
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            var target = await db.NewGuestOfferSettings.FirstOrDefaultAsync(x => x.Id == offerId);
+            if (target is null)
+            {
+                _statusMessage = "Offer not found. Refresh and try again.";
+                return;
+            }
+
+            if (!target.IsActive)
+            {
+                _statusMessage = "Selected offer is already inactive.";
+                return;
+            }
+
+            var hasOtherActive = await db.NewGuestOfferSettings
+                .AnyAsync(x => x.Id != target.Id && x.IsActive);
+
+            if (!hasOtherActive)
+            {
+                _statusMessage = "At least one offer must remain active. Activate another offer first.";
+                return;
+            }
+
+            target.IsActive = false;
+            target.UpdatedUtc = DateTime.UtcNow;
+
+            await db.SaveChangesAsync();
+            _statusMessage = $"Inactivated offer: {target.Title}";
+            await LoadOfferAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed inactivating selected offer {OfferId}", offerId);
+            _statusMessage = "Could not inactivate the selected offer.";
+        }
+    }
+
+    private static async Task DeactivateOtherOffersAsync(AppDbContext db, int selectedOfferId, DateTime now)
+    {
+        var activeRows = await db.NewGuestOfferSettings
+            .Where(x => x.Id != selectedOfferId && x.IsActive)
+            .ToListAsync();
+
+        foreach (var activeRow in activeRows)
+        {
+            activeRow.IsActive = false;
+            activeRow.UpdatedUtc = now;
+        }
+    }
+
+    private void ResetEditorToDefaults()
+    {
+        _editingOfferId = 0;
+        _offerEditor.OfferCode = "";
+        _offerEditor.Title = "";
+        _offerEditor.Description = "";
+        _offerEditor.CtaText = "";
+        _offerEditor.IsActive = true;
+    }
+
+    private void ApplyEditorFromRow(NewGuestOfferSetting row)
+    {
+        _editingOfferId = row.Id;
+        _offerEditor.OfferCode = row.OfferCode;
+        _offerEditor.Title = row.Title;
+        _offerEditor.Description = row.Description;
+        _offerEditor.CtaText = row.CtaText;
+        _offerEditor.IsActive = row.IsActive;
+    }
+
+    private void CloseOfferModal()
+    {
+        _modalStatusMessage = null;
+        _isOfferModalOpen = false;
+    }
+
+    private static string FormatUpdatedUtc(DateTime? value)
+    {
+        return value.HasValue
+            ? value.Value.ToLocalTime().ToString("g")
+            : "Unknown";
+    }
+
+    private static string NormalizeOfferCode(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return string.Empty;
+        }
+
+        var chars = input
+            .Trim()
+            .ToLowerInvariant()
+            .Select(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-' ? ch : '-')
+            .ToArray();
+
+        return new string(chars).Trim('-');
+    }
+
+    private sealed class OfferEditorModel
+    {
+        [Required]
+        [MaxLength(80)]
+        public string OfferCode { get; set; } = "new_guest_offer";
+
+        [Required]
+        [MaxLength(120)]
+        public string Title { get; set; } = "New Guest Offer";
+
+        [Required]
+        [MaxLength(300)]
+        public string Description { get; set; } = "Complimentary gloss upgrade with your first cut + color service.";
+
+        [Required]
+        [MaxLength(80)]
+        public string CtaText { get; set; } = "Create account to claim";
+
+        public bool IsActive { get; set; } = true;
+    }
+}
+
+<style>
+    .offer-card {
+        margin-top: 1rem;
+        border: 1px solid #e7ebf3;
+        border-radius: 14px;
+        background: linear-gradient(180deg, #ffffff, #fffaf9);
+        border-left: 6px solid #ff4f7b;
+        box-shadow: 0 10px 24px rgba(255, 79, 123, 0.11);
+    }
+
+    .offer-card .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.8rem 0.9rem;
+        border-bottom: 1px solid #f6dae4;
+        background: linear-gradient(180deg, #fff4f8, #fffdf9);
+    }
+
+    .offer-card button.toggle-btn {
+        border: 0;
+        border-radius: 999px;
+        padding: 0.52rem 0.85rem;
+        font-weight: 700;
+        cursor: pointer;
+        background: #ffe4ea;
+        color: #8f2e45;
+        box-shadow: none;
+    }
+
+    .offer-form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.6rem;
+        align-items: end;
+    }
+
+    .offer-wide {
+        grid-column: 1 / -1;
+    }
+
+    .offer-active {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 42px;
+    }
+
+    .offer-active label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin: 0;
+    }
+
+    .offer-actions {
+        margin-top: 0.75rem;
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .offer-grid {
+        margin-top: 0.75rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .offer-tile {
+        border: 1px solid #e7ebf3;
+        border-radius: 12px;
+        background: #fff;
+        padding: 0.75rem;
+    }
+
+    .offer-tile.is-active {
+        border-color: #bde6c8;
+        box-shadow: 0 8px 20px rgba(38, 122, 66, 0.12);
+    }
+
+    .offer-tile-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.55rem;
+    }
+
+    .offer-tile h4 {
+        margin: 0;
+        font-size: 1rem;
+        font-family: "Fraunces", Georgia, serif;
+    }
+
+    .offer-code {
+        margin: 0.35rem 0 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 0.83rem;
+        color: #5f6672;
+    }
+
+    .offer-copy {
+        margin: 0.55rem 0;
+        color: #3e4758;
+        line-height: 1.45;
+        font-size: 0.9rem;
+    }
+
+    .offer-meta {
+        margin: 0.2rem 0;
+        color: #6a7381;
+        font-size: 0.82rem;
+    }
+
+    .tile-actions {
+        margin-top: 0.7rem;
+    }
+
+    .field.area {
+        min-height: 88px;
+        resize: vertical;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(16, 22, 38, 0.45);
+        display: grid;
+        place-items: center;
+        z-index: 1100;
+        padding: 1rem;
+    }
+
+    .modal-card {
+        width: min(760px, 95vw);
+        background: #fff;
+        border: 1px solid #e7ebf3;
+        border-radius: 14px;
+        padding: 1rem;
+        box-shadow: 0 18px 46px rgba(25, 32, 48, 0.22);
+    }
+
+    .modal-card h3 {
+        margin: 0 0 0.8rem;
+        font-family: "Fraunces", Georgia, serif;
+    }
+
+    .modal-status {
+        margin-top: 0.6rem;
+        margin-bottom: 0;
+    }
+
+    .status-msg.error {
+        color: #8f2e45;
+    }
+
+    .status-pill {
+        display: inline-block;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        padding: 0.2rem 0.6rem;
+        border: 1px solid transparent;
+    }
+
+    .status-pill.active {
+        color: #166c2f;
+        background: #eaf8ef;
+        border-color: #bde6c8;
+    }
+
+    .status-pill.inactive {
+        color: #6a7381;
+        background: #f4f6fb;
+        border-color: #e1e6f1;
+    }
+
+    @@media (max-width: 760px) {
+        .offer-form-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .offer-wide {
+            grid-column: auto;
+        }
+
+        .modal-card {
+            width: min(680px, 98vw);
+        }
+    }
+</style>
