@@ -19,11 +19,11 @@
             <p class="card-summary">@_accountRows.Count accounts, @_pendingCount pending, @_suspendedCount suspended</p>
         </div>
         <button type="button" class="toggle-btn" @onclick="ToggleUsers">
-            @(_showUsers ? "Collapse" : "Open")
+            @(_isExpanded ? "Collapse" : "Open")
         </button>
     </div>
 
-    @if (_showUsers)
+    @if (_isExpanded)
     {
         <div class="card-body">
             <div class="account-summary-grid">
@@ -209,7 +209,7 @@
     private readonly List<LoginUser> _accountRows = [];
     private readonly AccountEditorModel _editModel = new();
 
-    private bool _showUsers;
+    private bool _isExpanded;
     private bool _isEditModalOpen;
     private bool _isEditingSelf;
     private bool _editIsError;
@@ -237,7 +237,7 @@
 
     private void ToggleUsers()
     {
-        _showUsers = !_showUsers;
+        _isExpanded = !_isExpanded;
     }
 
     private void ToggleQuickFilter(AccountFilter filter)

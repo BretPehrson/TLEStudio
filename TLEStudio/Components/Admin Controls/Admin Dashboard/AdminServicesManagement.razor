@@ -9,11 +9,11 @@
     <div class="card-head">
         <strong>Services</strong>
         <button type="button" class="toggle-btn" @onclick="ToggleServices">
-            @(_showServices ? "Collapse" : "Open")
+            @(_isExpanded ? "Collapse" : "Open")
         </button>
     </div>
 
-    @if (_showServices)
+    @if (_isExpanded)
     {
         <div class="card-body">
             <EditForm Model="_newService" OnValidSubmit="CreateServiceAsync" FormName="serviceCreateForm">
@@ -128,7 +128,7 @@
     private readonly ServiceEditorModel _editService = new();
     private readonly List<ServiceOffering> _services = [];
 
-    private bool _showServices;
+    private bool _isExpanded;
     private bool _isEditModalOpen;
     private int _editingId;
     private string? _statusMessage;
@@ -140,7 +140,7 @@
 
     private void ToggleServices()
     {
-        _showServices = !_showServices;
+        _isExpanded = !_isExpanded;
     }
 
     private async Task LoadServicesAsync()

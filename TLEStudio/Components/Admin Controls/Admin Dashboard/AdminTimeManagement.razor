@@ -8,11 +8,11 @@
     <div class="card-head">
         <strong>Time Management</strong>
         <button type="button" class="toggle-btn" @onclick="ToggleTimeManagement">
-            @(_showTimeManagement ? "Collapse" : "Open")
+            @(_isExpanded ? "Collapse" : "Open")
         </button>
     </div>
 
-    @if (_showTimeManagement)
+    @if (_isExpanded)
     {
         <div class="card-body admin-editor">
             <p>Set weekly hours for each weekday and apply them across a target range, then use single-day overrides for exceptions.</p>
@@ -111,7 +111,7 @@
     private DateOnly _rangeStart;
     private DateOnly _rangeEnd;
     private DateOnly _overrideDate = DateOnly.FromDateTime(DateTime.Today);
-    private bool _showTimeManagement;
+    private bool _isExpanded;
     private string? _statusMessage;
 
     private EventCallback<DateOnly> OverrideDateChanged => EventCallback.Factory.Create<DateOnly>(this, OnOverrideDateChangedAsync);
@@ -128,7 +128,7 @@
 
     private void ToggleTimeManagement()
     {
-        _showTimeManagement = !_showTimeManagement;
+        _isExpanded = !_isExpanded;
     }
 
     private bool IsHourSelected(int hour)

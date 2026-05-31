@@ -10,11 +10,11 @@
     <div class="card-head">
         <strong>Offers</strong>
         <button type="button" class="toggle-btn" @onclick="ToggleOfferCard">
-            @(_showOfferCard ? "Collapse" : "Open")
+            @(_isExpanded ? "Collapse" : "Open")
         </button>
     </div>
 
-    @if (_showOfferCard)
+    @if (_isExpanded)
     {
         <div class="card-body">
             <div class="offer-actions">
@@ -123,7 +123,7 @@
 @code {
     private readonly OfferEditorModel _offerEditor = new();
     private readonly List<NewGuestOfferSetting> _offers = [];
-    private bool _showOfferCard = true;
+    private bool _isExpanded = false;
     private bool _isOfferModalOpen;
     private bool _isAddMode = true;
     private int _editingOfferId;
@@ -138,7 +138,7 @@
 
     private void ToggleOfferCard()
     {
-        _showOfferCard = !_showOfferCard;
+        _isExpanded = !_isExpanded;
     }
 
     private async Task LoadOfferAsync()
