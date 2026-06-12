@@ -19,11 +19,11 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    # 2️⃣ Setup .NET 8 SDK
+    # 2️⃣ Setup .NET 10 SDK
     - name: Setup .NET
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '9.0.x'
+        dotnet-version: '10.0.x'
 
     - name: Clean workspace
       run: rm -rf ./bin ./obj ./publish
