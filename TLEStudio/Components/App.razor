@@ -16,11 +16,11 @@
     <link rel="icon" type="image/png" href="images/studio-vibe-favicon.png" />
     <link rel="shortcut icon" type="image/png" href="images/studio-vibe-favicon.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
     <script src="app.js"></script>
     <script src="_framework/blazor.web.js"></script>
 </body>
